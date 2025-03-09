@@ -8,10 +8,17 @@ import pandas as pd
 
 class FeatureExtractor:
 
-    def __init__(self, repo_path,repo):
-        self.repo_path = repo_path
+    def __init__(self, repo_path,repo,data_type):
+        self.repo_path = f"{repo_path}/{repo}"
         self.repo = repo
+        self.data_type = data_type
 
+    def file_exists_in_commit(self, repo, commit_hash, file_path):       
+        try:
+            repo.git.ls_tree(commit_hash, file_path)
+            return True 
+        except git.exc.GitCommandError:
+            return False  
     def get_file_versions(self, commit_hash, file_path):
    
         repo = git.Repo(self.repo_path)        
@@ -21,9 +28,13 @@ class FeatureExtractor:
         
         if parent_commit:
             
-            current_version = repo.git.show(f"{commit_hash}:{file_path}")           
-            previous_version = None
-            
+            current_version = None            
+            try:
+                current_version = repo.git.show(f"{commit_hash}:{file_path}")
+            except git.exc.GitCommandError:
+                current_version = None 
+               
+            previous_version = None           
             try:
                 previous_version = repo.git.show(f"{parent_commit.hexsha}:{file_path}")
             except BaseException  as e:
@@ -118,6 +129,8 @@ class FeatureExtractor:
                     break
 
         return added_lines, removed_lines, modified_lines
+    
+
     def compare_ast_trees(self,prev_ast, curr_ast, added_lines, removed_lines):
         differences = []
         
@@ -138,6 +151,7 @@ class FeatureExtractor:
                             differences.append(f"Difference at {path}.{field}: {prev_val} vs {curr_val}")
         compare_nodes(prev_ast, curr_ast)
         return differences
+    
     def parse_code(self,code):
         try:
             return ast.parse(code)    
@@ -168,10 +182,24 @@ class FeatureExtractor:
         
         return features
 
-    def compare_ast_class_features(self,prev_code, curr_code):   
-    
+    def compare_ast_class_features(self,prev_code, curr_code):     
+        
+        if curr_code is None:   
+            #print("No Current code available. Treating all features are deleted.")
+            prev_features = self.extract_ast_features(prev_code)
+            return {
+                "added_functions": 0,
+                "removed_functions": len(prev_features["function_definitions"]),
+                "added_classes": 0,
+                "removed_classes": len(prev_features["class_definitions"]),
+                "added_variables": 0,
+                "removed_variables":len(prev_features["variable_assignments"]),
+                "added_method_calls": 0,
+                "removed_method_calls":len(prev_features["method_calls"]),
+            }
+        
         if prev_code is None:
-            print("No previous code available. Treating all features as newly added.")
+            #print("No previous code available. Treating all features as newly added.")
             curr_features = self.extract_ast_features(curr_code)
             return {
                 "added_functions": len(curr_features["function_definitions"]),
@@ -244,7 +272,7 @@ class FeatureExtractor:
             
             for field, value1 in ast.iter_fields(node1):
                 value2 = getattr(node2, field, None)
-                print(f"valuex {value1}{value2}")
+                #print(f"valuex {value1}{value2}")
                 if isinstance(value1, list):
                     if len(value1) != len(value2):
                         return False
@@ -295,17 +323,17 @@ class FeatureExtractor:
 
                     
                     if not are_nodes_equivalent(prev_node.test, curr_node.test):
-                        print(f"Change detected in 'if' condition at line {lineno}")
+                        #print(f"Change detected in 'if' condition at line {lineno}")
                         return True
             
             for lineno in prev_condition_line_numbers:
                 if lineno not in curr_condition_line_numbers:
-                    print(f"Removed 'if' condition at line {lineno}")
+                    #print(f"Removed 'if' condition at line {lineno}")
                     return True
 
             for lineno in curr_condition_line_numbers:
                 if lineno not in prev_condition_line_numbers:
-                    print(f"Added 'if' condition at line {lineno}")
+                    #print(f"Added 'if' condition at line {lineno}")
                     return True
 
             return False  
@@ -327,17 +355,17 @@ class FeatureExtractor:
                     curr_node = curr_for_line_numbers[lineno]
 
                     if not are_nodes_equivalent(prev_node.iter, curr_node.iter):
-                        print(f"Change detected in 'for' loop range at line {lineno}")
+                        #print(f"Change detected in 'for' loop range at line {lineno}")
                         return True
            
             for lineno in prev_for_line_numbers:
                 if lineno not in curr_for_line_numbers:
-                    print(f"Removed 'for' loop at line {lineno}")
+                    #print(f"Removed 'for' loop at line {lineno}")
                     return True
 
             for lineno in curr_for_line_numbers:
                 if lineno not in prev_for_line_numbers:
-                    print(f"Added 'for' loop at line {lineno}")
+                    #print(f"Added 'for' loop at line {lineno}")
                     return True
 
             return False
@@ -360,17 +388,17 @@ class FeatureExtractor:
                     curr_node = curr_function_line_numbers[lineno]
 
                     if prev_node.name != curr_node.name or len(prev_node.args.args) != len(curr_node.args.args):
-                        print(f"Change detected in method signature at line {lineno}")
+                        #print(f"Change detected in method signature at line {lineno}")
                         return True
             
             for lineno in prev_function_line_numbers:
                 if lineno not in curr_function_line_numbers:
-                    print(f"Removed method at line {lineno}")
+                    #print(f"Removed method at line {lineno}")
                     return True
 
             for lineno in curr_function_line_numbers:
                 if lineno not in prev_function_line_numbers:
-                    print(f"Added method at line {lineno}")
+                    #print(f"Added method at line {lineno}")
                     return True
 
             return False
@@ -388,7 +416,7 @@ class FeatureExtractor:
             curr_name_ids = {node.id for node in curr_name_nodes}
 
             if prev_name_ids != curr_name_ids:
-                print(f"Variable renaming detected")
+                #print(f"Variable renaming detected")
                 return True
 
             return False
@@ -406,14 +434,14 @@ class FeatureExtractor:
         return features
     
     def extract(self):
-        df = pd.read_excel(f"filename_{self.repo}.xlsx")
+        df = pd.read_excel(f"{self.data_type}/{self.data_type}_{self.repo}.xlsx")
         features_data = []         
         for index, row in df.iterrows():    
-            
+            print(f"Processing row {self.repo} {index} {row['commit']}")
             path = row['filepath'].replace("\\", "/")
             file_content = self.get_file_versions(row['commit'],path)
             defect_lines = row['lines']
-            print(f"Processing row {index} {row['commit']} {path}")
+            
             
             try:
                 features = self.extract_features_from_diff(file_content[0], file_content[1], defect_lines)
@@ -421,12 +449,19 @@ class FeatureExtractor:
 
             except BaseException  as e:
                 print(f"error has occured for row {index} {e}")
-            if index==8000:
-                df_f = pd.DataFrame(features_data)
-                df_f.to_csv(f"{self.repo}_feature.csv", index=False)
-                break
+            
+        df_f = pd.DataFrame(features_data)
+        df_f.to_csv(f"{self.data_type}/{self.repo}_feature.csv", index=False)           
 
 
 if __name__ == "__main__":
-    processor = FeatureExtractor("D:/Master thesis/repos/airflow/"  ,"airflow")
-    processor.extract()
+    #repo="localstack"
+    repos = ["django"]
+    for repo in repos:  
+        processor = FeatureExtractor("D:/Master thesis/repos"  ,repo,"train")
+        processor.extract()
+        processor = FeatureExtractor("D:/Master thesis/repos"  ,repo,"test")
+        processor.extract()
+        processor = FeatureExtractor("D:/Master thesis/repos"  ,repo,"val")
+        processor.extract()
+    

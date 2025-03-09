@@ -24,7 +24,7 @@ class FileProcessor:
             unique_values = self.table['repo'].unique()
             for value in unique_values:
                 filtered_df = self.table[self.table['repo'] == value]
-                filename = f"filename_{value}.xlsx"
+                filename = f"val_{value}.xlsx"
                 filtered_df.to_excel(filename, index=False)
                 print(f"Saved {filename}")
     
@@ -36,5 +36,7 @@ class FileProcessor:
         print("Processing completed successfully!")
 
 if __name__ == "__main__":
-    processor = FileProcessor("defectors/line_bug_prediction_splits/random/train.parquet.gzip")
+    #processor = FileProcessor("defectors/line_bug_prediction_splits/random/train.parquet.gzip")
+    #processor = FileProcessor("defectors/line_bug_prediction_splits/random/test.parquet.gzip")
+    processor = FileProcessor("defectors/line_bug_prediction_splits/random/val.parquet.gzip")    
     processor.process()

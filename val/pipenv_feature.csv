@@ -1,0 +1,5 @@
+num_changes,added_lines,removed_lines,modified_lines,if_condition_changed,loop_range_changed,method_signature_changed,variables_renamed,is_defective,added_functions,removed_functions,added_classes,removed_classes,added_variables,removed_variables,added_method_calls,removed_method_calls
+379,0,1,0,1,1,1,0,False,0,0,0,0,0,0,0,0
+203,28,2,8,1,1,1,0,True,1,0,0,0,0,0,4,1
+594,4,0,1,1,0,1,0,True,0,0,0,0,0,0,0,0
+266,1,2,0,1,1,1,0,False,0,0,0,0,0,0,0,0
